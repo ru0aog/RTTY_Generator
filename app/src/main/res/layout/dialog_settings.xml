@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Скорость БОД"
+        android:textSize="16sp"
+        android:textColor="#FFFFFF"
+        android:paddingBottom="8dp"/>
+
+    <EditText
+        android:id="@+id/etBaudRate"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="number"
+        android:hint="Например: 50"
+        android:background="@android:drawable/editbox_background" />
+
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Частота MARK (Гц)"
+        android:textSize="16sp"
+        android:textColor="#FFFFFF"
+        android:paddingTop="16dp"
+        android:paddingBottom="8dp"/>
+
+    <EditText
+        android:id="@+id/etMarkFreq"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="number"
+        android:hint="Например: 1300"
+        android:background="@android:drawable/editbox_background" />
+
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Частота SPACE (Гц)"
+        android:textSize="16sp"
+        android:textColor="#FFFFFF"
+        android:paddingTop="16dp"
+        android:paddingBottom="8dp"/>
+
+    <EditText
+        android:id="@+id/etSpaceFreq"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="number"
+        android:hint="Например: 2100"
+        android:background="@android:drawable/editbox_background" />
+
+    <TextView
+        android:id="@+id/tvTimeDiff"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textSize="16sp"
+        android:textColor="#FFA500"
+        android:paddingTop="16dp"
+        android:paddingBottom="8dp"/>
+
+    <CheckBox
+        android:id="@+id/cbExpandedLog"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Показывать развёрнутый лог"
+        android:textColor="#FFFFFF"
+        android:paddingTop="8dp"/>
+</LinearLayout>

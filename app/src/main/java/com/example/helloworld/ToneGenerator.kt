@@ -5,7 +5,8 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import kotlin.math.PI
 import kotlin.math.sin
-import kotlin.math.roundToInt
+import android.os.Handler
+import android.os.Looper
 
 class ToneGenerator {
     private var audioTrack: AudioTrack? = null
@@ -120,7 +121,7 @@ class ToneGenerator {
         bitArray.clear()
         currentMode = "LAT"
 
-        log("Передача: '$text'")
+        log("Передача: '${text.toUpperCase()}'")
         log("Начинаем кодирование Baudot")
 
         // Добавляем служебные CR+LF в начало
@@ -277,8 +278,11 @@ class ToneGenerator {
         audioBuffer.addAll(generateTone(MARK_FREQ, 0.3, totalPhase, volume).toList())
 
         //вывести список передаваемых битов
-        log(displayedbitarray.dropLast(1))
+        //log(displayedbitarray.dropLast(1))
 
+        // Расчёт длительности
+        val durationSeconds = audioBuffer.size.toDouble() / SAMPLE_RATE
+        log("Длительность аудио: ${"%.1f".format(durationSeconds)} сек")
 
         // 4. Создаём AudioTrack
         audioTrack = AudioTrack.Builder()
@@ -300,10 +304,30 @@ class ToneGenerator {
             // Вариант 1: округление до ближайшего целого (рекомендуется для аудио)
             (audioBuffer[it] * 2).toInt().toShort()
         }
+
+        val handler = Handler(Looper.getMainLooper())
+        val checkPlayback = object : Runnable {
+            override fun run() {
+                // Получаем текущую позицию воспроизведения (количество обработанных образцов)
+                val position = audioTrack?.getPlaybackHeadPosition() ?: 0
+
+                // Сравниваем с размером буфера (в образцах)
+                if (position >= shortBuffer.size) {
+                    log("Воспроизведение остановлено.")
+                    log("=== Передача завершена ===\n")
+                    handler.removeCallbacks(this)
+                } else {
+                    handler.postDelayed(this, 100) // проверяем снова через 100 мс
+                }
+            }
+        }
+
+        log("Воспроизведение звука...")
+
         audioTrack?.write(shortBuffer, 0, shortBuffer.size, AudioTrack.WRITE_BLOCKING)
         audioTrack?.play()
+        handler.post(checkPlayback) // запускаем опрос
 
-        log("=== Передача завершена ===\n")
 
     }
 
@@ -328,7 +352,4 @@ class ToneGenerator {
         audioTrack = null
     }
 
-    fun isPlaying(): Boolean {
-        return audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING
-    }
 }
