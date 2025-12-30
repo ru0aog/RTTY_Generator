@@ -7,20 +7,49 @@ import kotlin.math.PI
 import kotlin.math.sin
 import android.os.Handler
 import android.os.Looper
+import android.os.Environment
+import java.io.File
+import java.io.FileOutputStream
+import kotlin.concurrent.thread
+
 
 class ToneGenerator {
     private var audioTrack: AudioTrack? = null
     var onLogMessage: ((String) -> Unit)? = null  // Callback для логов
 
     // Частоты RTTY (стандарт)
-    private val MARK_FREQ = 1170  // «1» (Mark)
-    private val SPACE_FREQ = 1000  // «0» (Space)
-    private val BAUD_RATE = 45.45  // Скорость передачи, бод
-    private val SAMPLE_RATE = 44100  // Частота дискретизации, Гц
-    private val AMPLITUDE = 0.2f  // Громкость (0.0–1.0)
+    // Изменяемые параметры (по умолчанию)
+    var MARK_FREQ: Int = 1170      // «1» (Mark), Гц
+    var SPACE_FREQ: Int = 1000     // «0» (Space), Гц
+    var BAUD_RATE: Double = 45.45  // Скорость передачи, бод
+    private val SAMPLE_RATE = 44100  // Частота дискретизации, Гц (фиксированная)
+    var IS_ExpandedLog: Boolean = false    // не выводить подробный лог
+    var IS_SavetofileLog: Boolean = false    // не сохранять в файл
+    var volume: Float = 0.2f    // Громкость (0.0–1.0)
+
+    fun updateSettings(
+        MARK_FREQ: Int,
+        SPACE_FREQ: Int,
+        BAUD_RATE: Double,
+        IS_ExpandedLog: Boolean,
+        IS_SavetofileLog: Boolean,
+        volume: Float? = null
+    ) {
+        this.MARK_FREQ = MARK_FREQ
+        this.SPACE_FREQ = SPACE_FREQ
+        this.BAUD_RATE = BAUD_RATE
+        this.IS_ExpandedLog = IS_ExpandedLog
+        this.IS_SavetofileLog = IS_SavetofileLog
+        if (volume != null) {
+            this.volume = volume
+        }
+        //onLogMessage?.invoke("Настройки обновлены: MARK=$MARK_FREQ Гц, SPACE=$SPACE_FREQ Гц, БОД=$BAUD_RATE, лог=$IS_ExpandedLog, Громкость=$volume")
+    }
+
 
     // ITA2/МТК‑2 таблица (упрощённая)
     private val ITA2 = mapOf<Any, List<Int>>(
+        // Латинский регистр LAT
         'A' to listOf(1, 1, 0, 0, 0),
         'B' to listOf(1, 0, 0, 1, 1),
         'C' to listOf(0, 1, 1, 1, 0),
@@ -48,6 +77,7 @@ class ToneGenerator {
         'Y' to listOf(1, 0, 1, 0, 1),
         'Z' to listOf(1, 0, 0, 0, 1),
 
+        // Цифровой регистр FIGS
         '0' to listOf(0, 1, 1, 0, 1),
         '1' to listOf(1, 1, 1, 0, 1),
         '2' to listOf(1, 1, 0, 0, 1),
@@ -70,13 +100,20 @@ class ToneGenerator {
         '/' to listOf(0, 1, 1, 1, 1),
         ' ' to listOf(0, 0, 1, 0, 0),
 
-        // Русские буквы (МТК‑2)
+        'Ш' to listOf(0, 1, 0, 1, 1),
+        'Щ' to listOf(0, 0, 1, 0, 1),
+        'Э' to listOf(1, 0, 1, 1, 0),
+        'Ю' to listOf(1, 1, 0, 1, 0),
+        'Ч' to listOf(0, 1, 0, 1, 0),
+
+        // Русский регистр RUS (МТК‑2)
         'А' to listOf(1, 1, 0, 0, 0),
         'Б' to listOf(1, 0, 0, 1, 1),
         'В' to listOf(1, 1, 0, 0, 1),
         'Г' to listOf(0, 1, 0, 1, 1),
         'Д' to listOf(1, 0, 0, 1, 0),
         'Е' to listOf(1, 0, 0, 0, 0),
+        'Ё' to listOf(1, 0, 0, 0, 0),
         'Ж' to listOf(0, 1, 1, 1, 1),
         'З' to listOf(1, 0, 0, 0, 1),
         'И' to listOf(0, 1, 1, 0, 0),
@@ -98,7 +135,7 @@ class ToneGenerator {
         'Ы' to listOf(1, 0, 1, 0, 1),
         'Ь' to listOf(1, 0, 1, 1, 1),
         'Я' to listOf(1, 1, 1, 0, 1),
-        'Ё' to listOf(1, 0, 0, 0, 0),
+
 
         // Режимы
         "RUS" to listOf(0, 0, 0, 0, 0),
@@ -106,7 +143,8 @@ class ToneGenerator {
         "LAT" to listOf(1, 1, 1, 1, 1),
 
         '\r' to listOf(0, 0, 0, 1, 0),
-        '\n' to listOf(0, 1, 0, 0, 0)
+        '\n' to listOf(0, 1, 0, 0, 0),
+        "SPACE" to listOf(0, 0, 0, 0, 0)
     )
 
     // Текущий режим кодирования
@@ -121,7 +159,9 @@ class ToneGenerator {
         bitArray.clear()
         currentMode = "LAT"
 
-        log("Передача: '${text.toUpperCase()}'")
+        // Формируем выделенное сообщение с HTML-разметкой
+        val highlightedText = "Передача: '<font color='#39FF14'>${text.toUpperCase()}</font>'"
+        log(highlightedText)  // Передаём HTML‑строку
         log("Начинаем кодирование Baudot")
 
         // Добавляем служебные CR+LF в начало
@@ -132,16 +172,23 @@ class ToneGenerator {
         // Кодируем основной текст
         for (char in text.toUpperCase()) {
             if (char !in ITA2) {
-                log("Символ '$char' не поддерживается, пропускаем")
+                log("<font color='#FF0000'> --> </font> Символ '<font color='#39FF14'>$char</font>' <font color='#FF0000'>НЕ ПОДДЕРЖИВАЕТСЯ</font>")
+                log("пропускаем")
                 continue
             }
 
             val targetMode = getCharMode(char)
-            if (targetMode != currentMode) {
-                addCharToBitArray(targetMode)
-                currentMode = targetMode
-            }
+            // Если символ — пробел, не меняем режим
+            if (targetMode == "SPACE") {
+                }
+            // Если режим изменился (и это не пробел) — переключаем режим и кодируем символ
+            else if (targetMode != currentMode) {
+                    addCharToBitArray(targetMode)
+                    currentMode = targetMode
+                }
             addCharToBitArray(char)
+
+
         }
 
         // Добавляем служебные CR+LF в конец
@@ -158,8 +205,15 @@ class ToneGenerator {
      */
     private fun getCharMode(char: Char): String {
         return when (char) {
+            ' ' -> "SPACE"  // Специальный режим для пробела
             in 'A'..'Z' -> "LAT"
-            in 'А'..'Я', 'Ё' -> "RUS"
+            in 'А'..'Я', 'Ё' -> {
+                if (char in setOf('Ш', 'Щ', 'Э', 'Ю', 'Ч')) {
+                    "FIGS"
+                } else {
+                    "RUS"
+                }
+            }
             else -> "FIGS"
         }
     }
@@ -174,13 +228,20 @@ class ToneGenerator {
             else -> return
         }
         // отобразить вывод
-        val ita2code = ITA2[char]?.joinToString(separator = "") ?: "НЕ ПОДДЕРЖИВАЕТСЯ"
+        val ita2code = ITA2[char]?.joinToString(separator = "")
+            ?: "<font color='#FF0000'>НЕ ПОДДЕРЖИВАЕТСЯ</font>"
         val displayedChar = when (char) {
             '\n' -> "LF"
             '\r' -> "CR"
             else -> char.toString()
         }
-        log("Символ: '$displayedChar' → 0+"+"$ita2code"+"+1.5")
+
+        // Логируем символ, если включён расширенный режим
+        if (IS_ExpandedLog == true) {
+            log("Символ: '<font color='#39FF14'>$displayedChar</font>' → 0+$ita2code+1.5")
+        }
+
+        //log("<font color='#FF0000'> --> </font> Символ '<font color='#39FF14'>$char</font>' <font color='#FF0000'>НЕ ПОДДЕРЖИВАЕТСЯ</font>")
 
         // Старт‑бит (0)
         bitArray.add(0.0)
@@ -197,12 +258,9 @@ class ToneGenerator {
     /**
      * Генерирует синусоидальный тон заданной частоты и длительности
      */
-    private fun generateTone(
-        freq: Int,
-        durationSec: Double,
-        phase: Double,
-        volume: Float
-    ): FloatArray {
+    private fun generateTone(freq: Int, durationSec: Double,
+                             phase: Double, volume: Float): FloatArray {
+
         val numSamples = (SAMPLE_RATE * durationSec).toInt()
         val tone = FloatArray(numSamples)
 
@@ -214,7 +272,7 @@ class ToneGenerator {
             val t = i.toDouble() / SAMPLE_RATE
             // Полная фаза с учётом начальной фазы
             val totalPhase = omega * t + phase
-            tone[i] = (sin(totalPhase) * (volume * Short.MAX_VALUE)).toFloat()
+            tone[i] = sin(totalPhase).toFloat() * volume.coerceIn(0f, 1f) * (Short.MAX_VALUE / 2)
         }
 
         return tone
@@ -225,10 +283,10 @@ class ToneGenerator {
     /**
      * Воспроизводит RTTY‑сигнал для заданного текста
      */
-    fun playRtty(text: String, volume: Float = 0.3f) {  // Добавляем параметр volume с дефолтным значением 1.0
+    fun playRtty(text: String, volume: Float = 0.3f) {
         if (text.isEmpty()) return
 
-        log("=== Начало передачи RTTY ===")
+        log("<font color='#B2EC5D'>=== Начало передачи RTTY ===</font>")
         log("Частота MARK: $MARK_FREQ Гц")
         log("Частота SPACE: $SPACE_FREQ Гц")
         log("Скорость: $BAUD_RATE бод")
@@ -238,21 +296,21 @@ class ToneGenerator {
         val bits = encodeToITA2(text)
 
         // 2. Рассчитываем длительность бита
-        val bitDuration = 1.0 / BAUD_RATE  // сек
+        val bitDuration = 1.0 / BAUD_RATE
 
-// 3. Генерируем аудио
+        // 3. Генерируем аудио
         val audioBuffer = mutableListOf<Float>()
-        var totalPhase = 0.0  // начальная фаза
+        var totalPhase = 0.0
 
-// Маркерный тон ПЕРЕД передачей - 300 мс
+        // Маркерный тон ПЕРЕД передачей — 300 мс
         audioBuffer.addAll(generateTone(MARK_FREQ, 0.3, totalPhase, volume).toList())
-        totalPhase = updatePhase(totalPhase, MARK_FREQ, 0.3)  // обновляем фазу
+        totalPhase = updatePhase(totalPhase, MARK_FREQ, 0.3)
 
         var displayedbitarray = ""
         for (bit in bits) {
             val freq = when (bit) {
-                1.0, 0.5 -> MARK_FREQ  // Mark (1 или полустоп)
-                else -> SPACE_FREQ       // Space (0)
+                1.0, 0.5 -> MARK_FREQ
+                else -> SPACE_FREQ
             }
 
             val displayedbit = when (bit) {
@@ -262,29 +320,31 @@ class ToneGenerator {
             }
             displayedbitarray += displayedbit + ","
 
-            // Длительность: для полустопа — половина бита
             val duration = if (bit == 0.5) bitDuration * 0.5 else bitDuration
-
-
-            // Генерируем тон с учётом текущей фазы
             val tone = generateTone(freq, duration, totalPhase, volume)
             audioBuffer.addAll(tone.toList())
-
-            // Корректно обновляем фазу для следующего тона
             totalPhase = updatePhase(totalPhase, freq, duration)
         }
 
-        // Маркерный тон ПОСЛЕ передачи - 300 мс
+        // Маркерный тон ПОСЛЕ передачи — 300 мс
         audioBuffer.addAll(generateTone(MARK_FREQ, 0.3, totalPhase, volume).toList())
 
-        //вывести список передаваемых битов
-        //log(displayedbitarray.dropLast(1))
+
+        // Выводим список битов (если включено)
+        if (IS_ExpandedLog) {
+            log(displayedbitarray.dropLast(1))
+        }
 
         // Расчёт длительности
         val durationSeconds = audioBuffer.size.toDouble() / SAMPLE_RATE
         log("Длительность аудио: ${"%.1f".format(durationSeconds)} сек")
 
-        // 4. Создаём AudioTrack
+        // 4. Формируем shortBuffer для воспроизведения и будущей записи
+        val shortBuffer = ShortArray(audioBuffer.size) {
+            (audioBuffer[it] * 2).toInt().toShort()
+        }
+
+        // 5. Создаём AudioTrack
         audioTrack = AudioTrack.Builder()
             .setAudioAttributes(AudioAttributes.Builder()
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -296,40 +356,65 @@ class ToneGenerator {
                 .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                 .build())
             .setTransferMode(AudioTrack.MODE_STATIC)
-            .setBufferSizeInBytes(audioBuffer.size * 2)
+            .setBufferSizeInBytes(shortBuffer.size * 2)
             .build()
 
-        // 5. Записываем и играем
-        val shortBuffer = ShortArray(audioBuffer.size) {
-            // Вариант 1: округление до ближайшего целого (рекомендуется для аудио)
-            (audioBuffer[it] * 2).toInt().toShort()
-        }
+        // 6. Записываем данные в AudioTrack
+        audioTrack?.write(shortBuffer, 0, shortBuffer.size, AudioTrack.WRITE_BLOCKING)
 
+
+        // 7. Запускаем воспроизведение
+        audioTrack?.play()
+
+        // 8. Монитор состояния воспроизведения
         val handler = Handler(Looper.getMainLooper())
         val checkPlayback = object : Runnable {
             override fun run() {
-                // Получаем текущую позицию воспроизведения (количество обработанных образцов)
                 val position = audioTrack?.getPlaybackHeadPosition() ?: 0
 
-                // Сравниваем с размером буфера (в образцах)
                 if (position >= shortBuffer.size) {
-                    log("Воспроизведение остановлено.")
-                    log("=== Передача завершена ===\n")
-                    handler.removeCallbacks(this)
+                    // Шаг 1: Сообщаем об окончании воспроизведения
+                    log("Воспроизведение окончено.")
+
+                    // Шаг 2: Проверяем, нужно ли сохранять файл
+                    if (IS_SavetofileLog) {
+                        log("Сохранение файла...")
+
+                        // Сохраняем в фоновом потоке
+                        thread {
+                            val filePath = saveWavFile(shortBuffer, SAMPLE_RATE)
+
+                            // Шаг 3: ПОСЛЕ сохранения — выводим финальное сообщение
+                            handler.post {
+                                log("<font color='#B2EC5D'>=== Передача завершена ===</font>")
+                                // Освобождаем ресурсы
+                                audioTrack?.release()
+                                audioTrack = null
+                                handler.removeCallbacks(this)
+                            }
+                        }
+                    } else {
+                        // Шаг 3: Если сохранение не нужно — сразу выводим завершение
+                        log("<font color='#B2EC5D'>=== Передача завершена ===</font>")
+                        // Освобождаем ресурсы
+                        audioTrack?.release()
+                        audioTrack = null
+                        handler.removeCallbacks(this)
+                    }
                 } else {
-                    handler.postDelayed(this, 100) // проверяем снова через 100 мс
+                    handler.postDelayed(this, 100)
                 }
             }
         }
 
+
+        // 9. Уведомляем о начале воспроизведения
         log("Воспроизведение звука...")
-
-        audioTrack?.write(shortBuffer, 0, shortBuffer.size, AudioTrack.WRITE_BLOCKING)
-        audioTrack?.play()
-        handler.post(checkPlayback) // запускаем опрос
-
-
+        handler.post(checkPlayback)
     }
+
+
+
 
 
     private fun updatePhase(currentPhase: Double, freq: Int, durationSec: Double): Double {
@@ -351,5 +436,102 @@ class ToneGenerator {
         audioTrack?.release()
         audioTrack = null
     }
+
+
+    private fun saveWavFile(shortBuffer: ShortArray, sampleRate: Int) {
+        try {
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists()) downloadsDir.mkdirs()
+
+            val wavFile = File(downloadsDir, "RTTY.wav")
+            val outputStream = FileOutputStream(wavFile)
+
+            try {
+                val dataSize = shortBuffer.size * 2
+                val fileSize = dataSize + 44 - 8
+
+                outputStream.write("RIFF".toByteArray())
+                outputStream.write(intToBytes(fileSize))
+                outputStream.write("WAVE".toByteArray())
+
+                outputStream.write("fmt ".toByteArray())
+                outputStream.write(intToBytes(16))
+                outputStream.write(shortToBytes(1.toShort()))
+                outputStream.write(shortToBytes(1.toShort()))
+                outputStream.write(intToBytes(sampleRate))
+                outputStream.write(intToBytes(sampleRate * 2))
+                outputStream.write(shortToBytes(2.toShort()))
+                outputStream.write(shortToBytes(16.toShort()))
+
+                outputStream.write("data".toByteArray())
+                outputStream.write(intToBytes(dataSize))
+
+                for (sample in shortBuffer) {
+                    // Исправленные побитовые операции
+                    outputStream.write(sample.toInt().and(0xFF))
+                    outputStream.write(sample.toInt().ushr(8).and(0xFF))
+                }
+
+                outputStream.flush()
+                log("<font color='#90EE90'>Файл сохранён: ${wavFile.absolutePath}</font>")
+            } catch (e: Exception) {
+                log("<font color='#FF0000'>Ошибка записи файла: ${e.message}</font>")
+            } finally {
+                outputStream.close()
+            }
+        } catch (e: Exception) {
+            log("<font color='#FF0000'>Ошибка доступа к хранилищу: ${e.message}</font>")
+        }
+    }
+
+
+
+    // Вспомогательная функция: запись заголовка WAV
+    private fun writeWavHeader(
+        out: FileOutputStream,
+        numSamples: Int,
+        sampleRate: Int
+    ) {
+        val byteRate = sampleRate * 2  // 2 байта на образец (16-bit)
+        val blockAlign: Short = 2            // 2 байта на канал (моно)
+
+        // RIFF Header
+        out.write("RIFF".toByteArray())                     // chunkId
+        out.write(intToBytes(36 + numSamples * 2))         // chunkSize (весь файл минус 8 байт)
+        out.write("WAVE".toByteArray())                      // format
+
+        // fmt Subchunk
+        out.write("fmt ".toByteArray())                    // subchunk1Id
+        out.write(intToBytes(16))                          // subchunk1Size
+        out.write(shortToBytes(1))                       // audioFormat (PCM = 1)
+        out.write(shortToBytes(1))                       // numChannels (моно = 1)
+        out.write(intToBytes(sampleRate))               // sampleRate
+        out.write(intToBytes(byteRate))                // byteRate
+        out.write(shortToBytes(blockAlign))          // blockAlign
+        out.write(shortToBytes(16))                  // bitsPerSample (16 bit)
+
+        // data Subchunk
+        out.write("data".toByteArray())                   // subchunk2Id
+        out.write(intToBytes(numSamples * 2))           // subchunk2Size (число байт данных)
+    }
+
+    // Конвертеры чисел в байты (Little Endian)
+    private fun intToBytes(value: Int): ByteArray {
+        return byteArrayOf(
+            (value and 0xFF).toByte(),
+            (value shr 8 and 0xFF).toByte(),
+            (value shr 16 and 0xFF).toByte(),
+            (value shr 24 and 0xFF).toByte()
+        )
+    }
+
+    private fun shortToBytes(value: Short): ByteArray {
+        return byteArrayOf(
+            (value.toInt() and 0xFF).toByte(),
+            ((value.toInt() shr 8) and 0xFF).toByte()
+        )
+    }
+
+
 
 }

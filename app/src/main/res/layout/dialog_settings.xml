@@ -10,15 +10,16 @@
         android:layout_height="wrap_content"
         android:text="Скорость БОД"
         android:textSize="16sp"
-        android:textColor="#FFFFFF"
+        android:textColor="#000000"
         android:paddingBottom="8dp"/>
 
     <EditText
         android:id="@+id/etBaudRate"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:inputType="number"
-        android:hint="Например: 50"
+        android:inputType="numberDecimal"
+        android:digits="0123456789."
+        android:hint="Например: 45.45"
         android:background="@android:drawable/editbox_background" />
 
 
@@ -27,7 +28,7 @@
         android:layout_height="wrap_content"
         android:text="Частота MARK (Гц)"
         android:textSize="16sp"
-        android:textColor="#FFFFFF"
+        android:textColor="#000000"
         android:paddingTop="16dp"
         android:paddingBottom="8dp"/>
 
@@ -36,7 +37,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:inputType="number"
-        android:hint="Например: 1300"
+        android:hint="Например: 1170"
         android:background="@android:drawable/editbox_background" />
 
 
@@ -45,7 +46,7 @@
         android:layout_height="wrap_content"
         android:text="Частота SPACE (Гц)"
         android:textSize="16sp"
-        android:textColor="#FFFFFF"
+        android:textColor="#000000"
         android:paddingTop="16dp"
         android:paddingBottom="8dp"/>
 
@@ -54,24 +55,69 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:inputType="number"
-        android:hint="Например: 2100"
+        android:hint="Например: 1000"
         android:background="@android:drawable/editbox_background" />
 
+
     <TextView
-        android:id="@+id/tvTimeDiff"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text=""
+        android:text="Разница времени LOC-UTC"
         android:textSize="16sp"
-        android:textColor="#FFA500"
+        android:textColor="#000000"
         android:paddingTop="16dp"
         android:paddingBottom="8dp"/>
+
+    <EditText
+        android:id="@+id/etTimeDiff"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="number"
+        android:hint="В часах, например: 7"
+        android:background="@android:drawable/editbox_background" />
+
 
     <CheckBox
         android:id="@+id/cbExpandedLog"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Показывать развёрнутый лог"
-        android:textColor="#FFFFFF"
+        android:textColor="#000000"
         android:paddingTop="8dp"/>
+
+    <CheckBox
+        android:id="@+id/cbSaveToFile"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Сохранять в WAV-файл"
+        android:checked="false" />
+
+    <TextView
+        android:id="@+id/tvVolumeLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Громкость:"
+        android:textSize="16sp"
+        android:layout_marginTop="16dp" />
+    <EditText
+        android:id="@+id/etVolumeValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:inputType="number"
+        android:minEms="4"
+        android:maxLength="3"
+        android:text="20"
+        android:textSize="14sp"
+        android:textColor="#666"
+        android:background="@android:drawable/editbox_background_normal"
+        android:padding="8dp" />
+    <SeekBar
+        android:id="@+id/seekBarVolume"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="100"
+        android:progress="20" />  <!-- 20% по умолчанию (0.2f) -->
+
+
+
 </LinearLayout>
